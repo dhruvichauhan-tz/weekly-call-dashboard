@@ -1,0 +1,842 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Weekly Team Standup</title>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #0e0e14; --surface: #16161f; --surface2: #1e1e2a;
+    --border: #2a2a38; --text: #e8e4d8; --muted: #6a6880;
+    --accent: #e0622a; --accent2: #f0a030; --green: #3ecf8e;
+    --red: #e05050; --blue: #4a80f0;
+  }
+  html, body { height: 100%; }
+  body { background: var(--bg); color: var(--text); font-family: 'DM Sans', sans-serif; font-weight: 300; display: flex; flex-direction: column; min-height: 100vh; }
+  .topbar { background: var(--surface); border-bottom: 1px solid var(--border); padding: 0 28px; display: flex; align-items: center; justify-content: space-between; height: 56px; flex-shrink: 0; }
+  .topbar-left { display: flex; align-items: center; gap: 16px; }
+  .logo { font-family: 'Bebas Neue', sans-serif; font-size: 1.3rem; letter-spacing: 0.06em; color: var(--accent); }
+  .week-pill { background: var(--surface2); border: 1px solid var(--border); border-radius: 20px; padding: 4px 12px; font-size: 0.72rem; font-weight: 500; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+  .topbar-right { display: flex; align-items: center; gap: 12px; }
+  .timer-display { font-family: 'Bebas Neue', sans-serif; font-size: 1.5rem; letter-spacing: 0.05em; color: var(--text); min-width: 70px; text-align: right; }
+  .timer-display.warn { color: var(--red); }
+  .topbar-btn { background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; padding: 6px 14px; font-family: 'DM Sans', sans-serif; font-size: 0.78rem; font-weight: 500; color: var(--muted); cursor: pointer; transition: all 0.2s; }
+  .topbar-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .topbar-btn.active { background: var(--accent); border-color: var(--accent); color: white; }
+  .tabnav { background: var(--surface); border-bottom: 1px solid var(--border); padding: 0 28px; display: flex; gap: 4px; flex-shrink: 0; }
+  .tab { padding: 10px 18px; font-size: 0.8rem; font-weight: 500; letter-spacing: 0.04em; color: var(--muted); cursor: pointer; border-bottom: 2px solid transparent; transition: color 0.2s, border-color 0.2s; display: flex; align-items: center; gap: 7px; white-space: nowrap; }
+  .tab:hover { color: var(--text); }
+  .tab.active { color: var(--text); border-bottom-color: var(--accent); }
+  .tab-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+  .page { display: none; flex: 1; overflow: auto; padding: 24px 28px; }
+  .page.active { display: flex; flex-direction: column; gap: 20px; }
+
+  /* Agenda */
+  .agenda-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+  .agenda-title { font-family: 'Bebas Neue', sans-serif; font-size: 2.8rem; letter-spacing: 0.04em; line-height: 1; }
+  .agenda-title span { color: var(--accent); }
+  .meeting-meta { text-align: right; font-size: 0.78rem; color: var(--muted); line-height: 1.8; }
+  .agenda-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+  .agenda-item { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 18px; position: relative; cursor: pointer; transition: border-color 0.2s; }
+  .agenda-item.current { border-color: var(--accent); background: linear-gradient(135deg, #1e1614 0%, var(--surface) 100%); }
+  .agenda-item.done { opacity: 0.4; }
+  .agenda-item-num { font-family: 'Bebas Neue', sans-serif; font-size: 2.2rem; color: var(--border); line-height: 1; margin-bottom: 6px; }
+  .agenda-item.current .agenda-item-num { color: var(--accent); }
+  .agenda-item-title { font-size: 0.92rem; font-weight: 600; color: var(--text); margin-bottom: 4px; }
+  .agenda-item-desc { font-size: 0.75rem; color: var(--muted); line-height: 1.4; }
+  .agenda-item-time { margin-top: 12px; font-size: 0.7rem; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+  .agenda-item.current .agenda-item-time { color: var(--accent); }
+  .current-badge { position: absolute; top: 12px; right: 12px; background: var(--accent); color: white; font-size: 0.62rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; padding: 3px 8px; border-radius: 3px; }
+  .guidelines { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 18px 22px; display: flex; gap: 32px; flex-wrap: wrap; }
+  .guideline-col { flex: 1; min-width: 180px; }
+  .guideline-col h4 { font-size: 0.7rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); margin-bottom: 8px; }
+  .guideline-col ul { list-style: none; display: flex; flex-direction: column; gap: 5px; }
+  .guideline-col li { font-size: 0.8rem; color: var(--text); display: flex; align-items: flex-start; gap: 8px; }
+  .guideline-col li::before { content: '→'; color: var(--accent); flex-shrink: 0; }
+
+  /* Status */
+  .status-controls { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .status-controls h2 { font-family: 'Bebas Neue', sans-serif; font-size: 1.6rem; letter-spacing: 0.04em; flex: 1; }
+  .filter-btn { background: var(--surface); border: 1px solid var(--border); border-radius: 20px; padding: 5px 14px; font-size: 0.73rem; font-weight: 500; color: var(--muted); cursor: pointer; transition: all 0.2s; }
+  .filter-btn.active { background: var(--accent); border-color: var(--accent); color: white; }
+  .team-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 14px; align-items: start; }
+  .member-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+  .card-header { display: flex; align-items: center; gap: 10px; padding: 14px 16px; border-bottom: 1px solid var(--border); }
+  .avatar { width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 0.78rem; font-weight: 700; flex-shrink: 0; color: white; }
+  .card-name { font-size: 0.9rem; font-weight: 600; }
+  .card-role { font-size: 0.7rem; color: var(--muted); margin-left: auto; background: var(--surface2); padding: 3px 8px; border-radius: 3px; }
+  .card-body { padding: 12px 16px; display: flex; flex-direction: column; gap: 10px; }
+  .card-section h5 { font-size: 0.65rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 5px; }
+  .h5-done { color: var(--green); } .h5-win { color: var(--accent2); } .h5-issue { color: var(--red); } .h5-focus { color: var(--blue); }
+  .card-section ul { list-style: none; display: flex; flex-direction: column; gap: 3px; }
+  .card-section li { font-size: 0.8rem; color: var(--text); line-height: 1.4; padding-left: 12px; position: relative; }
+  .card-section li::before { content:'·'; position:absolute; left:0; color:var(--muted); }
+  .card-section.issue-section li::before { color:var(--red); content:'!'; font-weight:700; }
+  .card-section.win-section li::before { color:var(--accent2); content:'★'; font-size:9px; top:1px; }
+  .add-member-btn { background: var(--surface); border: 1.5px dashed var(--border); border-radius: 10px; padding: 24px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; cursor: pointer; transition: border-color 0.2s, color 0.2s; color: var(--muted); font-size: 0.8rem; font-weight: 500; }
+  .add-member-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .card-actions { display: flex; gap: 6px; margin-left: auto; opacity: 0; transition: opacity 0.15s; }
+  .member-card:hover .card-actions { opacity: 1; }
+  .card-action-btn { background: var(--surface2); border: 1px solid var(--border); border-radius: 4px; padding: 3px 9px; font-size: 0.68rem; font-weight: 600; cursor: pointer; color: var(--muted); transition: all 0.15s; font-family: 'DM Sans', sans-serif; }
+  .card-action-btn.edit:hover { border-color: var(--blue); color: var(--blue); }
+  .card-action-btn.remove:hover { border-color: var(--red); color: var(--red); }
+  .confirm-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.75); z-index: 200; align-items: center; justify-content: center; }
+  .confirm-overlay.open { display: flex; }
+  .confirm-box { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 28px; max-width: 380px; width: 90%; text-align: center; }
+  .confirm-box h4 { font-family: 'Bebas Neue', sans-serif; font-size: 1.4rem; letter-spacing: 0.04em; margin-bottom: 8px; color: var(--red); }
+  .confirm-box p { font-size: 0.82rem; color: var(--muted); margin-bottom: 22px; line-height: 1.5; }
+  .confirm-btns { display: flex; gap: 10px; justify-content: center; }
+  .confirm-cancel { background: none; border: 1px solid var(--border); border-radius: 6px; padding: 9px 22px; font-family: 'DM Sans', sans-serif; font-size: 0.82rem; color: var(--muted); cursor: pointer; }
+  .confirm-ok { background: var(--red); border: none; border-radius: 6px; padding: 9px 22px; font-family: 'DM Sans', sans-serif; font-size: 0.82rem; font-weight: 600; color: white; cursor: pointer; }
+  .toast { position: fixed; bottom: 68px; right: 24px; background: var(--surface); border: 1px solid var(--border); border-left: 3px solid var(--green); padding: 11px 18px; border-radius: 8px; font-size: 0.8rem; color: var(--text); opacity: 0; transform: translateY(6px); transition: all 0.25s; pointer-events: none; z-index: 300; }
+  .toast.show { opacity: 1; transform: translateY(0); }
+
+  /* Issues */
+  .issues-layout { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .issues-col h3 { font-family: 'Bebas Neue', sans-serif; font-size: 1.3rem; letter-spacing: 0.04em; margin-bottom: 10px; display: flex; align-items: center; gap: 8px; }
+  .col-dot { width: 8px; height: 8px; border-radius: 50%; }
+  .issue-card { background: var(--surface); border: 1px solid var(--border); border-left: 3px solid; border-radius: 8px; padding: 12px 16px; margin-bottom: 8px; font-size: 0.83rem; line-height: 1.45; }
+  .issue-card.blocker { border-left-color: var(--red); }
+  .issue-card.win-card { border-left-color: var(--green); }
+  .issue-from { font-size: 0.68rem; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); margin-bottom: 4px; }
+
+  /* Modal */
+  .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.75); z-index: 100; align-items: center; justify-content: center; padding: 20px; overflow-y: auto; }
+  .modal-overlay.open { display: flex; }
+  .modal { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 28px; max-width: 600px; width: 100%; max-height: 90vh; overflow-y: auto; }
+  .modal h3 { font-family: 'Bebas Neue', sans-serif; font-size: 1.5rem; letter-spacing: 0.04em; margin-bottom: 4px; }
+  .modal-subtitle { font-size: 0.78rem; color: var(--muted); margin-bottom: 20px; }
+  .modal-name { display: flex; gap: 8px; margin-bottom: 18px; }
+  .modal-name input, .modal-name select { flex: 1; background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; padding: 9px 12px; font-family: 'DM Sans', sans-serif; font-size: 0.85rem; color: var(--text); }
+  .modal-name input::placeholder { color: var(--muted); }
+  .modal-name select option { background: var(--surface2); }
+  .modal-field { margin-bottom: 16px; }
+  .modal-field-label { display: flex; align-items: center; gap: 8px; margin-bottom: 7px; font-size: 0.7rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; }
+  .field-icon { width: 22px; height: 22px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 11px; flex-shrink: 0; }
+  .fi-done  { background: #1e3d2e; color: var(--green); }
+  .fi-win   { background: #3a2e00; color: var(--accent2); }
+  .fi-issue { background: #3a1010; color: var(--red); }
+  .fi-focus { background: #0f1e3d; color: var(--blue); }
+  .field-label-done  { color: var(--green); }
+  .field-label-win   { color: var(--accent2); }
+  .field-label-issue { color: var(--red); }
+  .field-label-focus { color: var(--blue); }
+  .modal-field textarea { width: 100%; background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; padding: 10px 12px; font-family: 'DM Sans', sans-serif; font-size: 0.82rem; color: var(--text); resize: vertical; min-height: 72px; line-height: 1.55; transition: border-color 0.2s; }
+  .modal-field textarea:focus { outline: none; border-color: var(--accent); }
+  .modal-field textarea::placeholder { color: #3a3a52; font-style: italic; }
+  .modal-field-hint { font-size: 0.68rem; color: var(--muted); margin-top: 4px; }
+  .modal-divider { border: none; border-top: 1px solid var(--border); margin: 18px 0; }
+  .modal-btns { display: flex; gap: 8px; justify-content: flex-end; margin-top: 4px; }
+  .modal-cancel { background: none; border: 1px solid var(--border); border-radius: 6px; padding: 9px 20px; font-family: 'DM Sans', sans-serif; font-size: 0.82rem; color: var(--muted); cursor: pointer; transition: border-color 0.2s; }
+  .modal-cancel:hover { border-color: var(--muted); }
+  .modal-save { background: var(--accent); border: none; border-radius: 6px; padding: 9px 24px; font-family: 'DM Sans', sans-serif; font-size: 0.82rem; font-weight: 600; color: white; cursor: pointer; transition: opacity 0.2s; }
+  .modal-save:hover { opacity: 0.88; }
+
+  /* Scorecard */
+  .sc-page-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-bottom: 4px; }
+  .sc-title { font-family: 'Bebas Neue', sans-serif; font-size: 2rem; letter-spacing: 0.04em; line-height: 1; }
+  .sc-title span { color: #a855f7; }
+  .sc-meta { font-size: 0.75rem; color: var(--muted); text-align: right; line-height: 1.9; }
+
+  .sc-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: 10px; }
+  table.sc-tbl { border-collapse: collapse; font-size: 0.79rem; width: 100%; }
+  .sc-tbl th { background: #111118; padding: 8px 10px; font-size: 0.62rem; font-weight: 700; letter-spacing: 0.09em; text-transform: uppercase; color: var(--muted); border-bottom: 2px solid var(--border); border-right: 1px solid var(--border); white-space: nowrap; text-align: center; position: sticky; top: 0; z-index: 2; }
+  .sc-tbl th.th-metric { text-align: left; min-width: 200px; position: sticky; left: 0; z-index: 3; background: #111118; }
+  .sc-tbl th.th-goal { color: #a855f7; min-width: 72px; }
+  .sc-tbl th.th-week { min-width: 72px; }
+  .sc-tbl th.th-week.th-current { color: var(--green); background: #0d1a12; }
+  .sc-tbl th.th-month { background: #0e0e18; color: #a855f7; font-size: 0.68rem; letter-spacing: 0.1em; border-bottom: 1px solid var(--border); }
+  .sc-tbl td { border-bottom: 1px solid #1c1c28; border-right: 1px solid #1c1c28; vertical-align: middle; padding: 0; }
+  .sc-tbl td.td-metric { padding: 7px 12px 7px 20px; color: var(--text); font-weight: 400; white-space: nowrap; position: sticky; left: 0; background: var(--bg); z-index: 1; border-right: 2px solid var(--border); }
+  .sc-tbl tr:hover td { background: #151520; }
+  .sc-tbl tr:hover td.td-metric { background: #151520; }
+  .sc-tbl .cat-row td { background: #0d0d16 !important; padding: 6px 12px; border-bottom: 1px solid #2a2a40; }
+  .sc-tbl .cat-label { font-size: 0.62rem; font-weight: 800; letter-spacing: 0.14em; text-transform: uppercase; color: #a855f7; }
+  .sc-tbl td.td-goal { background: #130e1a; }
+  .sc-tbl td.td-current { background: #0c1810; }
+  .sc-tbl input.sc-cell { display: block; width: 100%; background: transparent; border: none; padding: 7px 10px; font-family: 'DM Sans', sans-serif; font-size: 0.79rem; color: var(--text); text-align: right; outline: none; cursor: pointer; min-width: 65px; }
+  .sc-tbl input.sc-cell:focus { background: rgba(168,85,247,0.08); color: #c084fc; cursor: text; }
+  .sc-tbl input.sc-cell.goal-cell:focus { background: rgba(168,85,247,0.1); color: #a855f7; }
+  .sc-tbl input.sc-cell.curr-cell:focus { background: rgba(62,207,142,0.08); color: var(--green); }
+  .sc-tbl input.sc-cell::placeholder { color: #2e2e40; }
+  .sc-tbl td.td-status { text-align: center; padding: 6px 8px; min-width: 80px; }
+  .sc-pill { display: inline-block; padding: 2px 9px; border-radius: 20px; font-size: 0.6rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; }
+  .sc-on   { background: #1a3a2a; color: var(--green); }
+  .sc-off  { background: #3a1a1a; color: var(--red); }
+  .sc-na   { background: #1e1e2e; color: #3a3a55; }
+  .sc-hint { font-size: 0.7rem; color: var(--muted); margin-top: 8px; }
+  .sc-tbl td.td-past { opacity: 0.55; }
+
+  /* Notes */
+  .notes-bar { background: var(--surface); border-top: 1px solid var(--border); padding: 10px 28px; display: flex; align-items: center; gap: 12px; flex-shrink: 0; }
+  .notes-bar label { font-size: 0.7rem; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); white-space: nowrap; }
+  .notes-bar input { flex: 1; background: var(--surface2); border: 1px solid var(--border); border-radius: 5px; padding: 6px 12px; font-family: 'DM Sans', sans-serif; font-size: 0.82rem; color: var(--text); }
+  .notes-bar input:focus { outline: none; border-color: var(--accent); }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="topbar-left">
+    <div class="logo">Team Standup</div>
+    <div class="week-pill" id="weekPill">Week —</div>
+    <div class="week-pill" id="datePill" style="border-color:transparent;background:transparent;color:var(--muted)"></div>
+  </div>
+  <div class="topbar-right">
+    <div class="timer-display" id="timerDisplay">30:00</div>
+    <button class="topbar-btn" id="timerBtn" onclick="toggleTimer()">Start</button>
+    <button class="topbar-btn" onclick="resetTimer()">Reset</button>
+    <button class="topbar-btn" onclick="openModal()" style="color:var(--accent);border-color:var(--accent)">+ Add Update</button>
+    <button class="topbar-btn" onclick="confirmClearAll()" style="color:var(--red);border-color:var(--red)">Clear All</button>
+  </div>
+</div>
+
+<div class="tabnav">
+  <div class="tab active" onclick="showPage('agenda',this)"><div class="tab-dot" style="background:var(--accent)"></div> Agenda</div>
+  <div class="tab" onclick="showPage('status',this)"><div class="tab-dot" style="background:var(--blue)"></div> Team Status</div>
+  <div class="tab" onclick="showPage('issues',this)"><div class="tab-dot" style="background:var(--red)"></div> Blockers &amp; Wins</div>
+  <div class="tab" onclick="showPage('scorecard',this)"><div class="tab-dot" style="background:#a855f7"></div> Scorecard</div>
+</div>
+
+<!-- AGENDA -->
+<div class="page active" id="page-agenda">
+  <div class="agenda-header">
+    <div>
+      <div style="font-size:0.7rem;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:var(--muted);margin-bottom:6px">Weekly Sync</div>
+      <div class="agenda-title">Today's<br><span>Agenda</span></div>
+    </div>
+    <div class="meeting-meta">
+      <div id="metaDate" style="color:var(--text);font-weight:500"></div>
+      <div>Target: 30 minutes</div>
+      <div>Facilitator: Team Lead</div>
+    </div>
+  </div>
+  <div class="agenda-grid" id="agendaGrid"></div>
+  <div class="guidelines">
+    <div class="guideline-col">
+      <h4>Ground rules</h4>
+      <ul>
+        <li>Keep updates short — 2 min per person</li>
+        <li>No problem-solving during updates</li>
+        <li>Blockers flagged, fixed offline</li>
+      </ul>
+    </div>
+    <div class="guideline-col">
+      <h4>Update format</h4>
+      <ul>
+        <li>What you completed</li>
+        <li>Any wins or highlights</li>
+        <li>Blockers / what you need</li>
+        <li>Top priority next week</li>
+      </ul>
+    </div>
+    <div class="guideline-col">
+      <h4>Before this call</h4>
+      <ul>
+        <li>Submit status form by Thursday EOD</li>
+        <li>Review your own update — be ready</li>
+        <li>No slide prep needed</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<!-- STATUS -->
+<div class="page" id="page-status">
+  <div class="status-controls">
+    <h2>Team Status — <span style="color:var(--accent)" id="statusWeek"></span></h2>
+    <button class="filter-btn active" onclick="filterCards('all',this)">All</button>
+    <button class="filter-btn" onclick="filterCards('Social Media',this)">Social</button>
+    <button class="filter-btn" onclick="filterCards('SEO',this)">SEO</button>
+    <button class="filter-btn" onclick="filterCards('CRM',this)">CRM</button>
+    <button class="filter-btn" onclick="filterCards('Content Writer',this)">Content</button>
+    <button class="filter-btn" onclick="filterCards('Graphic Designer',this)">Design</button>
+  </div>
+  <div class="team-grid" id="teamGrid">
+    <div class="add-member-btn" onclick="openModal()"><div style="font-size:1.4rem">+</div><div>Add team update</div></div>
+  </div>
+</div>
+
+<!-- ISSUES -->
+<div class="page" id="page-issues">
+  <div class="issues-layout">
+    <div class="issues-col">
+      <h3><div class="col-dot" style="background:var(--red);margin-right:4px"></div> Blockers This Week</h3>
+      <div id="blockersCol"><div style="color:var(--muted);font-size:0.82rem;padding:12px">No blockers reported.</div></div>
+    </div>
+    <div class="issues-col">
+      <h3><div class="col-dot" style="background:var(--green);margin-right:4px"></div> Wins This Week</h3>
+      <div id="winsCol"><div style="color:var(--muted);font-size:0.82rem;padding:12px">No wins yet.</div></div>
+    </div>
+  </div>
+</div>
+
+<!-- SCORECARD -->
+<div class="page" id="page-scorecard">
+  <div class="sc-page-header">
+    <div>
+      <div style="font-size:0.7rem;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:var(--muted);margin-bottom:4px">Taazaa · Weekly Performance</div>
+      <div class="sc-title">Team <span>Scorecard</span></div>
+    </div>
+    <div class="sc-meta">
+      <div id="scCurrentLabel" style="color:var(--text);font-weight:600;font-size:0.85rem"></div>
+      <div>Click any cell to edit · Green = current week</div>
+    </div>
+  </div>
+
+  <div class="sc-wrap">
+    <table class="sc-tbl" id="scTable"></table>
+  </div>
+  <div class="sc-hint">💡 Click any cell to enter or update a value · Status auto-updates when Goal + current week are filled</div>
+</div>
+
+<div class="notes-bar">
+  <label>Meeting notes</label>
+  <input type="text" placeholder="Type action items or decisions here during the call…">
+</div>
+
+<!-- CONFIRM CLEAR MODAL -->
+<div class="confirm-overlay" id="confirmOverlay">
+  <div class="confirm-box">
+    <h4>Clear Dashboard?</h4>
+    <p>This will remove all team updates for this week. This cannot be undone.</p>
+    <div class="confirm-btns">
+      <button class="confirm-cancel" onclick="document.getElementById('confirmOverlay').classList.remove('open')">Cancel</button>
+      <button class="confirm-ok" onclick="clearAll()">Yes, Clear All</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<!-- MODAL -->
+<div class="modal-overlay" id="modalOverlay">
+  <div class="modal">
+    <h3>Add Team Update</h3>
+    <div class="modal-subtitle">Fill in each section for this team member</div>
+
+    <div class="modal-name">
+      <input type="text" placeholder="Name  e.g. Jamie" id="modalName">
+      <select id="modalRole" style="appearance:none">
+        <option value="">— Select role —</option>
+        <option>Social Media</option>
+        <option>SEO</option>
+        <option>CRM</option>
+        <option>Content Writer</option>
+        <option>Graphic Designer</option>
+      </select>
+    </div>
+
+    <hr class="modal-divider">
+
+    <div class="modal-field">
+      <div class="modal-field-label">
+        <div class="field-icon fi-done">✓</div>
+        <span class="field-label-done">Done This Week</span>
+      </div>
+      <textarea id="fieldDone" placeholder="What did they complete this week?&#10;One item per line — e.g.&#10;Published 3 Instagram posts&#10;Scheduled next week's content"></textarea>
+      <div class="modal-field-hint">One item per line</div>
+    </div>
+
+    <div class="modal-field">
+      <div class="modal-field-label">
+        <div class="field-icon fi-win">★</div>
+        <span class="field-label-win">Wins & Highlights</span>
+      </div>
+      <textarea id="fieldWins" placeholder="What worked well or is worth celebrating?&#10;e.g.&#10;Reel hit 10k views — best engagement this month"></textarea>
+      <div class="modal-field-hint">One item per line</div>
+    </div>
+
+    <div class="modal-field">
+      <div class="modal-field-label">
+        <div class="field-icon fi-issue">!</div>
+        <span class="field-label-issue">Blockers & Issues</span>
+      </div>
+      <textarea id="fieldIssues" placeholder="Anything slowing them down or needs a decision?&#10;e.g.&#10;Waiting on brand assets from client"></textarea>
+      <div class="modal-field-hint">One item per line · Leave blank if none</div>
+    </div>
+
+    <div class="modal-field">
+      <div class="modal-field-label">
+        <div class="field-icon fi-focus">→</div>
+        <span class="field-label-focus">Priority Next Week</span>
+      </div>
+      <textarea id="fieldFocus" placeholder="Top 1–3 priorities for next week&#10;e.g.&#10;Finish the Q2 content calendar draft"></textarea>
+      <div class="modal-field-hint">One item per line</div>
+    </div>
+
+    <div class="modal-btns">
+      <button class="modal-cancel" onclick="closeModal()">Cancel</button>
+      <button class="modal-save" onclick="saveUpdate()">Add to Dashboard</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  const now = new Date();
+  const startOfYear = new Date(now.getFullYear(), 0, 1);
+  const weekNum = Math.ceil(((now - startOfYear) / 86400000 + startOfYear.getDay() + 1) / 7);
+  const dateStr = now.toLocaleDateString('en-US', { weekday:'long', month:'long', day:'numeric', year:'numeric' });
+  document.getElementById('weekPill').textContent = 'Week ' + weekNum;
+  document.getElementById('datePill').textContent = dateStr;
+  document.getElementById('metaDate').textContent = dateStr;
+  document.getElementById('statusWeek').textContent = 'Week ' + weekNum;
+
+  const COLORS = ['#e0622a','#4a80f0','#3ecf8e','#f0a030','#a060e0'];
+  function initials(n) { return (n||'?').split(' ').map(w=>w[0]||'').join('').toUpperCase().slice(0,2)||'?'; }
+
+  let teamData = [];
+
+  function parseUpdate(text, nameOverride, roleOverride) {
+    let name = nameOverride || 'Team Member';
+    let role = roleOverride || '';
+    const done=[], wins=[], issues=[], focus=[];
+
+    // Try to extract name/role from header line
+    const headerMatch = text.match(/^([^·\n]+)·([^·\n]+)·/m);
+    if (headerMatch && !nameOverride) {
+      name = headerMatch[1].trim();
+      role = headerMatch[2].trim();
+    }
+
+    const lines = text.split('\n').map(l=>l.trim()).filter(Boolean);
+    let mode = null;
+    for (const line of lines) {
+      const l = line.toLowerCase();
+      if (l.includes('done this week') || l.startsWith('✅')) { mode='done'; continue; }
+      if (l.includes('wins') || l.startsWith('⭐')) { mode='win'; continue; }
+      if (l.includes('blocker') || l.includes('issue') || l.startsWith('⚠')) { mode='issue'; continue; }
+      if (l.includes('priority') || l.includes('next week') || l.startsWith('🎯')) { mode='focus'; continue; }
+      if (line.match(/^[•\-·]\s*/) || (line.startsWith('  ') && line.trim().startsWith('•'))) {
+        const txt = line.replace(/^\s*[•\-·]\s*/, '').trim();
+        if (!txt || txt.includes('━')) continue;
+        if (mode==='done') done.push(txt);
+        else if (mode==='win') wins.push(txt);
+        else if (mode==='issue') issues.push(txt);
+        else if (mode==='focus') focus.push(txt);
+      }
+    }
+    return { name, role, done, wins, issues, focus };
+  }
+
+  function renderTeamGrid(filter) {
+    filter = filter || 'all';
+    const grid = document.getElementById('teamGrid');
+    const filtered = filter==='all' ? teamData : teamData.filter(m=>m.role===filter);
+    let html = filtered.map(function(m, i) {
+      const color = COLORS[teamData.indexOf(m) % COLORS.length];
+      const realIdx = teamData.indexOf(m);
+      return '<div class="member-card" data-role="' + m.role + '">' +
+        '<div class="card-header">' +
+          '<div class="avatar" style="background:' + color + '">' + initials(m.name) + '</div>' +
+          '<div><div class="card-name">' + m.name + '</div></div>' +
+          '<div class="card-role">' + m.role + '</div>' +
+          '<div class="card-actions">' +
+            '<button class="card-action-btn edit" onclick="openModal(' + realIdx + ')">Edit</button>' +
+            '<button class="card-action-btn remove" onclick="removeCard(' + realIdx + ')">Remove</button>' +
+          '</div>' +
+        '</div>' +
+        '<div class="card-body">' +
+          (m.done.length ? '<div class="card-section"><h5 class="h5-done">✓ Done</h5><ul>' + m.done.map(d=>'<li>'+d+'</li>').join('') + '</ul></div>' : '') +
+          (m.wins.length ? '<div class="card-section win-section"><h5 class="h5-win">★ Wins</h5><ul>' + m.wins.map(w=>'<li>'+w+'</li>').join('') + '</ul></div>' : '') +
+          (m.issues.length ? '<div class="card-section issue-section"><h5 class="h5-issue">! Blockers</h5><ul>' + m.issues.map(x=>'<li>'+x+'</li>').join('') + '</ul></div>' : '') +
+          (m.focus.length ? '<div class="card-section"><h5 class="h5-focus">→ Next Week</h5><ul>' + m.focus.map(f=>'<li>'+f+'</li>').join('') + '</ul></div>' : '') +
+        '</div></div>';
+    }).join('');
+    html += '<div class="add-member-btn" onclick="openModal()"><div style="font-size:1.4rem">+</div><div>Add team update</div></div>';
+    grid.innerHTML = html;
+  }
+
+  function renderIssues() {
+    const b = document.getElementById('blockersCol');
+    const w = document.getElementById('winsCol');
+    const allBlockers = teamData.reduce(function(a,m){ return a.concat(m.issues.map(function(i){ return {from:m.name+' · '+m.role,text:i}; })); }, []);
+    const allWins     = teamData.reduce(function(a,m){ return a.concat(m.wins.map(function(i){   return {from:m.name+' · '+m.role,text:i}; })); }, []);
+    b.innerHTML = allBlockers.length ? allBlockers.map(x=>'<div class="issue-card blocker"><div class="issue-from">'+x.from+'</div>'+x.text+'</div>').join('') : '<div style="color:var(--muted);font-size:0.82rem;padding:12px">No blockers reported.</div>';
+    w.innerHTML = allWins.length     ? allWins.map(x=>'<div class="issue-card win-card"><div class="issue-from">'+x.from+'</div>'+x.text+'</div>').join('') : '<div style="color:var(--muted);font-size:0.82rem;padding:12px">No wins yet.</div>';
+  }
+
+  function filterCards(role, btn) {
+    document.querySelectorAll('.filter-btn').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    renderTeamGrid(role);
+  }
+
+  function openModal(editIdx) {
+    document.getElementById('modalOverlay').classList.add('open');
+    if (editIdx !== undefined) {
+      const m = teamData[editIdx];
+      document.getElementById('modalName').value = m.name;
+      document.getElementById('modalRole').value = m.role;
+      document.getElementById('fieldDone').value = (m.done||[]).join('\n');
+      document.getElementById('fieldWins').value = (m.wins||[]).join('\n');
+      document.getElementById('fieldIssues').value = (m.issues||[]).join('\n');
+      document.getElementById('fieldFocus').value = (m.focus||[]).join('\n');
+      document.getElementById('modalOverlay').dataset.editIdx = editIdx;
+    } else {
+      delete document.getElementById('modalOverlay').dataset.editIdx;
+    }
+  }
+
+  function closeModal() {
+    document.getElementById('modalOverlay').classList.remove('open');
+    document.getElementById('modalName').value = '';
+    document.getElementById('modalRole').value = '';
+    document.getElementById('fieldDone').value = '';
+    document.getElementById('fieldWins').value = '';
+    document.getElementById('fieldIssues').value = '';
+    document.getElementById('fieldFocus').value = '';
+    delete document.getElementById('modalOverlay').dataset.editIdx;
+  }
+
+  function parseLines(str) {
+    return str.split('\n').map(l => l.replace(/^[\s•\-·]+/, '').trim()).filter(Boolean);
+  }
+
+  function saveUpdate() {
+    const name = document.getElementById('modalName').value.trim();
+    const role = document.getElementById('modalRole').value;
+    if (!name) { document.getElementById('modalName').focus(); return; }
+    if (!role) { document.getElementById('modalRole').focus(); return; }
+
+    const parsed = {
+      name,
+      role,
+      done:   parseLines(document.getElementById('fieldDone').value),
+      wins:   parseLines(document.getElementById('fieldWins').value),
+      issues: parseLines(document.getElementById('fieldIssues').value),
+      focus:  parseLines(document.getElementById('fieldFocus').value),
+    };
+
+    const overlay = document.getElementById('modalOverlay');
+    const editIdx = overlay.dataset.editIdx !== undefined ? parseInt(overlay.dataset.editIdx) : -1;
+    if (editIdx >= 0) {
+      teamData[editIdx] = parsed;
+    } else {
+      const existing = teamData.findIndex(m => m.name.toLowerCase() === name.toLowerCase());
+      if (existing >= 0) teamData[existing] = parsed; else teamData.push(parsed);
+    }
+
+    renderTeamGrid();
+    renderIssues();
+    closeModal();
+  }
+
+  // Agenda
+  const agendaItems = [
+    {title:'Open & Check-in', desc:'Quick energy check — any urgent news?', time:'2 min'},
+    {title:'Team Updates', desc:'Each person: done · wins · blockers · next', time:'15 min'},
+    {title:'Blockers & Decisions', desc:'Surface anything blocking the team', time:'8 min'},
+    {title:'Priorities & Wrap', desc:'Confirm next-week priorities, action items', time:'5 min'},
+  ];
+  let currentAgenda = 0;
+  function renderAgenda() {
+    document.getElementById('agendaGrid').innerHTML = agendaItems.map(function(item,i) {
+      return '<div class="agenda-item' + (i===currentAgenda?' current':'') + (i<currentAgenda?' done':'') + '" onclick="setAgenda(' + i + ')">' +
+        (i===currentAgenda ? '<div class="current-badge">Now</div>' : '') +
+        '<div class="agenda-item-num">0' + (i+1) + '</div>' +
+        '<div class="agenda-item-title">' + item.title + '</div>' +
+        '<div class="agenda-item-desc">' + item.desc + '</div>' +
+        '<div class="agenda-item-time">' + item.time + '</div>' +
+      '</div>';
+    }).join('');
+  }
+  function setAgenda(i) { currentAgenda=i; renderAgenda(); }
+  renderAgenda();
+
+  // Timer
+  let totalSecs=30*60, timerRunning=false, timerInterval=null;
+  function formatTime(s) { return String(Math.floor(s/60)).padStart(2,'0') + ':' + String(s%60).padStart(2,'0'); }
+  function updateTimerDisplay() {
+    const el = document.getElementById('timerDisplay');
+    el.textContent = formatTime(totalSecs);
+    el.className = 'timer-display' + (totalSecs<=300?' warn':'');
+  }
+  function toggleTimer() {
+    timerRunning = !timerRunning;
+    const btn = document.getElementById('timerBtn');
+    if (timerRunning) {
+      btn.textContent='Pause'; btn.classList.add('active');
+      timerInterval = setInterval(function() {
+        if (totalSecs>0) { totalSecs--; updateTimerDisplay(); }
+        else { clearInterval(timerInterval); timerRunning=false; btn.textContent='Start'; btn.classList.remove('active'); }
+      }, 1000);
+    } else { clearInterval(timerInterval); btn.textContent='Resume'; btn.classList.remove('active'); }
+  }
+  function resetTimer() {
+    clearInterval(timerInterval); timerRunning=false; totalSecs=30*60; updateTimerDisplay();
+    document.getElementById('timerBtn').textContent='Start';
+    document.getElementById('timerBtn').classList.remove('active');
+  }
+
+  function showPage(id, el) {
+    document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+    document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+    document.getElementById('page-'+id).classList.add('active');
+    el.classList.add('active');
+  }
+
+  function removeCard(idx) {
+    teamData.splice(idx, 1);
+    renderTeamGrid();
+    renderIssues();
+    showToast('Update removed');
+  }
+
+  function confirmClearAll() {
+    if (teamData.length === 0) { showToast('Dashboard is already empty'); return; }
+    document.getElementById('confirmOverlay').classList.add('open');
+  }
+
+  function clearAll() {
+    teamData = [];
+    renderTeamGrid();
+    renderIssues();
+    document.getElementById('confirmOverlay').classList.remove('open');
+    showToast('Dashboard cleared for next week');
+  }
+
+  // ── Scorecard ─────────────────────────────────────────────────────
+  // Data from your Google Sheet (rows in order, with section headers)
+  const SC_SECTIONS = [
+    { label: 'Content', color: '#a855f7', rows: [
+      { m: 'Written OSB In-house', goal: 4, data: {'4-Jan':2,'11-Jan':2,'18-Jan':2,'25-Jan':2,'1-Feb':2,'8-Feb':2,'15-Feb':2,'22-Feb':2,'1-Mar':2} },
+      { m: 'Published OSB',        goal: 4, data: {'4-Jan':2,'11-Jan':2,'18-Jan':2,'25-Jan':0,'1-Feb':0,'8-Feb':0,'15-Feb':2,'22-Feb':2,'1-Mar':2} },
+      { m: 'Guest Posts Written',  goal: '', data: {'11-Jan':0,'18-Jan':0,'1-Feb':0,'8-Feb':2,'22-Feb':0} },
+      { m: 'Featured.com Submission', goal: '', data: {'4-Jan':5,'11-Jan':0,'18-Jan':7,'25-Jan':0,'1-Feb':0,'8-Feb':0,'15-Feb':0,'22-Feb':0,'1-Mar':4} },
+      { m: 'Published GP',         goal: 9,  data: {'4-Jan':0,'11-Jan':0,'18-Jan':0,'25-Jan':0,'8-Feb':1,'15-Feb':0} },
+    ]},
+    { label: 'SEO & Traffic', color: '#4a80f0', rows: [
+      { m: 'Overall Traffic',  goal: 2000, data: {'4-Jan':117,'11-Jan':367,'18-Jan':776,'25-Jan':716,'1-Feb':754,'8-Feb':761,'15-Feb':408,'22-Feb':1142,'1-Mar':938} },
+      { m: 'Paid Traffic (US)',goal: '',   data: {'4-Jan':0,'11-Jan':0,'18-Jan':0,'25-Jan':0,'1-Feb':0,'8-Feb':0,'15-Feb':0,'22-Feb':0,'1-Mar':0} },
+      { m: 'Organic Traffic',  goal: 1400, data: {'4-Jan':41,'11-Jan':126,'18-Jan':257,'25-Jan':311,'1-Feb':344,'8-Feb':357,'15-Feb':215,'22-Feb':276,'1-Mar':283} },
+      { m: 'US Traffic',       goal: 2800, data: {'4-Jan':22,'11-Jan':140,'18-Jan':391,'25-Jan':376,'1-Feb':386,'8-Feb':402,'15-Feb':140,'22-Feb':575,'1-Mar':597} },
+      { m: 'New Users',        goal: '',   data: {'4-Jan':23,'11-Jan':140,'18-Jan':375,'25-Jan':365,'1-Feb':370,'8-Feb':382,'15-Feb':126,'22-Feb':479,'1-Mar':392} },
+      { m: 'Backlinks',        goal: 35,   data: {'4-Jan':5,'11-Jan':0,'18-Jan':13,'25-Jan':0,'15-Feb':7} },
+    ]},
+    { label: 'Leads & Conversions', color: '#3ecf8e', rows: [
+      { m: 'Conversion',           goal: '',data: {'18-Jan':'0.26%'} },
+      { m: 'US Goal Completion',   goal: 5, data: {'4-Jan':0,'11-Jan':0,'18-Jan':1,'25-Jan':0,'1-Feb':1,'8-Feb':0,'15-Feb':0,'22-Feb':1,'1-Mar':3} },
+      { m: 'Lead from Review Sites',goal:1, data: {'4-Jan':0,'11-Jan':0,'18-Jan':0,'25-Jan':0,'1-Feb':0,'8-Feb':0,'15-Feb':0,'22-Feb':0,'1-Mar':0} },
+      { m: 'Organic Leads',        goal: 2, data: {'4-Jan':0,'11-Jan':0,'18-Jan':1,'25-Jan':0,'1-Feb':0,'8-Feb':0,'15-Feb':1,'22-Feb':1,'1-Mar':3} },
+      { m: 'Total Leads',          goal: 5, data: {'4-Jan':0,'11-Jan':0,'18-Jan':1,'25-Jan':0,'1-Feb':1,'8-Feb':0,'15-Feb':1,'22-Feb':1,'1-Mar':3} },
+      { m: 'MQLs',                 goal: 28,data: {'4-Jan':0,'11-Jan':0,'18-Jan':1,'25-Jan':0,'1-Feb':1,'8-Feb':0,'15-Feb':1,'22-Feb':1,'1-Mar':3} },
+      { m: 'SQLs',                 goal: 11,data: {'4-Jan':0,'11-Jan':0,'18-Jan':0,'25-Jan':0,'1-Feb':0,'8-Feb':0,'15-Feb':0,'22-Feb':0,'1-Mar':0} },
+      { m: 'No. of Reviews',       goal: 3, data: {'4-Jan':0,'11-Jan':0,'18-Jan':0,'25-Jan':0,'1-Feb':0,'8-Feb':0,'15-Feb':0,'22-Feb':0,'1-Mar':0} },
+    ]},
+    { label: 'LinkedIn', color: '#0077b5', rows: [
+      { m: 'LinkedIn Posts',          goal: 3,    data: {'4-Jan':5,'11-Jan':6,'18-Jan':5,'25-Jan':5,'1-Feb':7,'8-Feb':8,'15-Feb':5,'22-Feb':7,'1-Mar':7} },
+      { m: 'LinkedIn Followers (New)',goal: 1000, data: {'4-Jan':1729,'11-Jan':590,'18-Jan':418,'25-Jan':246,'1-Feb':209,'8-Feb':119,'15-Feb':123,'22-Feb':150,'1-Mar':81} },
+      { m: 'Impressions',             goal: '',   data: {'4-Jan':'4,704','11-Jan':'7,089','18-Jan':'7,653','25-Jan':'4,423','1-Feb':'7,021','8-Feb':'7,219','15-Feb':'7,282','22-Feb':'9,482','1-Mar':'9,873'} },
+      { m: 'Clicks',                  goal: '',   data: {'4-Jan':199,'11-Jan':499,'18-Jan':1402,'25-Jan':769,'1-Feb':554,'8-Feb':766,'15-Feb':955,'22-Feb':886,'1-Mar':562} },
+      { m: 'Likes',                   goal: '',   data: {'4-Jan':38,'11-Jan':95,'18-Jan':92,'25-Jan':36,'1-Feb':122,'8-Feb':72,'15-Feb':104,'22-Feb':150,'1-Mar':80} },
+      { m: 'Comments',                goal: '',   data: {'4-Jan':2,'11-Jan':2,'18-Jan':2,'25-Jan':0,'1-Feb':15,'8-Feb':3,'15-Feb':10,'22-Feb':8,'1-Mar':0} },
+    ]},
+    { label: 'Instagram', color: '#e1306c', rows: [
+      { m: 'Instagram Posts',  goal: 3, data: {'4-Jan':5,'11-Jan':6,'18-Jan':2,'25-Jan':1,'1-Feb':2,'8-Feb':2,'15-Feb':3,'22-Feb':6,'1-Mar':6} },
+      { m: 'Total Followers',  goal: '', data: {'4-Jan':0,'11-Jan':2,'18-Jan':4,'25-Jan':-1,'1-Feb':-4,'8-Feb':1,'15-Feb':0,'22-Feb':2,'1-Mar':-2} },
+      { m: 'Accounts Reached', goal: '', data: {'4-Jan':822,'11-Jan':1693,'18-Jan':1384,'25-Jan':915,'1-Feb':406,'8-Feb':669,'15-Feb':350,'22-Feb':568,'1-Mar':711} },
+      { m: 'Likes',            goal: '', data: {'4-Jan':69,'11-Jan':94,'18-Jan':126,'25-Jan':65,'1-Feb':44,'8-Feb':47,'15-Feb':22,'22-Feb':59,'1-Mar':31} },
+    ]},
+    { label: 'Video & YouTube', color: '#ff0000', rows: [
+      { m: 'Video Production',         goal: 2, data: {'4-Jan':3,'11-Jan':2,'18-Jan':1,'25-Jan':1,'1-Feb':1,'8-Feb':2,'15-Feb':1,'22-Feb':1,'1-Mar':1} },
+      { m: 'YouTube Video Publishing', goal: 1, data: {'1-Feb':1,'8-Feb':1,'15-Feb':0,'22-Feb':1,'1-Mar':1} },
+      { m: 'YouTube Followers (All)',  goal: '', data: {} },
+    ]},
+    { label: 'Other Channels', color: '#f0a030', rows: [
+      { m: 'New Subscribers (Newsletter / LinkedIn)', goal: '', data: {'18-Jan':107} },
+      { m: 'Podcast',                                 goal: 1,  data: {} },
+    ]},
+  ];
+
+  // Generate weekly date columns: Jan 4 2026 onwards, every 7 days
+  // Label format: "4-Jan", "11-Jan", "1-Feb" etc — matches data keys exactly
+  const MONTH_SHORT = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  function genWeeks() {
+    const weeks = [];
+    const start = new Date(2026, 0, 4);
+    const end   = new Date(2026, 11, 27);
+    let d = new Date(start);
+    while (d <= end) {
+      const label = d.getDate() + '-' + MONTH_SHORT[d.getMonth()];
+      weeks.push({ label, date: new Date(d) });
+      d.setDate(d.getDate() + 7);
+    }
+    return weeks;
+  }
+
+  const SC_WEEKS = genWeeks();
+
+  // Find current week index
+  function getCurrentWeekIdx() {
+    const today = new Date();
+    let best = 0;
+    for (let i = 0; i < SC_WEEKS.length; i++) {
+      if (SC_WEEKS[i].date <= today) best = i;
+      else break;
+    }
+    return best;
+  }
+
+  // Group weeks by month
+  function getMonthGroups(visibleWeeks) {
+    const groups = [];
+    let cur = null;
+    visibleWeeks.forEach(function(w, i) {
+      const mo = MONTH_SHORT[w.date.getMonth()] + ' ' + w.date.getFullYear();
+      if (!cur || cur.label !== mo) {
+        cur = { label: mo, count: 1, startIdx: i };
+        groups.push(cur);
+      } else {
+        cur.count++;
+      }
+    });
+    return groups;
+  }
+
+  // Show all weeks — scroll horizontally
+
+  // User edits stored here: scEdits[metric][weekLabel] = value
+  let scEdits = {};
+
+  function scGetVal(metric, weekLabel) {
+    if (scEdits[metric] && scEdits[metric][weekLabel] !== undefined) return scEdits[metric][weekLabel];
+    // find in section data
+    for (const sec of SC_SECTIONS) {
+      for (const row of sec.rows) {
+        if (row.m === metric) {
+          const v = row.data[weekLabel];
+          return (v !== undefined && v !== null) ? String(v) : '';
+        }
+      }
+    }
+    return '';
+  }
+
+  function scSetVal(metric, weekLabel, val) {
+    if (!scEdits[metric]) scEdits[metric] = {};
+    scEdits[metric][weekLabel] = val;
+    // update status pill for this row
+    scUpdateStatus(metric);
+  }
+
+  function scGetGoal(metric) {
+    for (const sec of SC_SECTIONS) {
+      for (const row of sec.rows) {
+        if (row.m === metric) return row.goal;
+      }
+    }
+    return '';
+  }
+  function scSetGoal(metric, val) {
+    for (const sec of SC_SECTIONS) {
+      for (const row of sec.rows) {
+        if (row.m === metric) { row.goal = val; return; }
+      }
+    }
+  }
+
+  function scUpdateStatus(metric) {
+    const curWeek = SC_WEEKS[getCurrentWeekIdx()];
+    if (!curWeek) return;
+    const goal = scGetGoal(metric);
+    const actual = scGetVal(metric, curWeek.label);
+    const pill = document.getElementById('sc-status-' + CSS.escape(metric));
+    if (!pill) return;
+    if (goal === '' || actual === '') {
+      pill.className = 'sc-pill sc-na'; pill.textContent = '—'; return;
+    }
+    const g = parseFloat(String(goal).replace(/[,%]/g,'')), a = parseFloat(String(actual).replace(/[,%]/g,''));
+    if (isNaN(g) || isNaN(a)) { pill.className = 'sc-pill sc-na'; pill.textContent = '—'; return; }
+    if (a >= g) { pill.className = 'sc-pill sc-on'; pill.textContent = 'On Track'; }
+    else { pill.className = 'sc-pill sc-off'; pill.textContent = 'Behind'; }
+  }
+
+  function renderScorecard() {
+    const curIdx = getCurrentWeekIdx();
+    const visibleWeeks = SC_WEEKS;
+    const visStart = 0;
+
+    // Update labels
+    const curWeek = SC_WEEKS[curIdx];
+    document.getElementById('scCurrentLabel').textContent = curWeek
+      ? 'Current week: ' + curWeek.label + ' · ' + curWeek.date.getFullYear()
+      : '';
+
+
+    const monthGroups = getMonthGroups(visibleWeeks);
+
+    let html = '<thead>';
+    // Row 1: month headers
+    html += '<tr><th class="th-metric" rowspan="2">Measurable</th><th class="th-goal" rowspan="2">Goal</th>';
+    monthGroups.forEach(function(g) {
+      html += '<th class="th-month" colspan="' + g.count + '">' + g.label + '</th>';
+    });
+    html += '<th rowspan="2" style="min-width:90px;text-align:center;color:var(--green)">Status</th></tr>';
+    // Row 2: week date headers
+    html += '<tr>';
+    visibleWeeks.forEach(function(w, i) {
+      const globalIdx = visStart + i;
+      const isCurrent = globalIdx === curIdx;
+      html += '<th class="th-week' + (isCurrent ? ' th-current' : '') + '">' + w.label + '</th>';
+    });
+    html += '</tr></thead><tbody>';
+
+    SC_SECTIONS.forEach(function(sec) {
+      // Section header row
+      html += '<tr class="cat-row"><td colspan="' + (2 + visibleWeeks.length + 1) + '" style="border-left:3px solid ' + sec.color + '"><span class="cat-label">' + sec.label + '</span></td></tr>';
+
+      sec.rows.forEach(function(row) {
+        const mId = row.m.replace(/[^a-zA-Z0-9]/g, '_');
+        const goal = row.goal !== undefined ? row.goal : '';
+        const goalDisplay = goal !== '' ? String(goal) : '';
+
+        // Status
+        const curWeekLabel = curWeek ? curWeek.label : '';
+        const actualCur = curWeekLabel ? scGetVal(row.m, curWeekLabel) : '';
+        let pillHtml = '<span class="sc-pill sc-na" id="sc-status-' + mId + '">—</span>';
+        if (goal !== '' && actualCur !== '') {
+          const g = parseFloat(String(goal).replace(/[,%]/g,'')), a = parseFloat(String(actualCur).replace(/[,%]/g,''));
+          if (!isNaN(g) && !isNaN(a)) {
+            if (a >= g) pillHtml = '<span class="sc-pill sc-on" id="sc-status-' + mId + '">On Track</span>';
+            else pillHtml = '<span class="sc-pill sc-off" id="sc-status-' + mId + '">Behind</span>';
+          }
+        }
+
+        html += '<tr>';
+        html += '<td class="td-metric">' + row.m + '</td>';
+        html += '<td class="td-goal"><input class="sc-cell goal-cell" type="text" placeholder="—" value="' + goalDisplay + '" title="Goal" onchange="scSetGoal(' + JSON.stringify(row.m) + ',this.value);scUpdateStatus(' + JSON.stringify(row.m) + ')" /></td>';
+
+        visibleWeeks.forEach(function(w, i) {
+          const globalIdx = visStart + i;
+          const isCurrent = globalIdx === curIdx;
+          const isPast = globalIdx < curIdx;
+          const val = scGetVal(row.m, w.label);
+          const cls = 'sc-cell' + (isCurrent ? ' curr-cell' : '');
+          const tdCls = isCurrent ? ' td-current' : (isPast ? ' td-past' : '');
+          html += '<td class="' + tdCls + '"><input class="' + cls + '" type="text" placeholder="—" value="' + val + '" onchange="scSetVal(' + JSON.stringify(row.m) + ',' + JSON.stringify(w.label) + ',this.value)" /></td>';
+        });
+
+        html += '<td class="td-status">' + pillHtml + '</td>';
+        html += '</tr>';
+      });
+    });
+
+    html += '</tbody>';
+    document.getElementById('scTable').innerHTML = html;
+  }
+
+  // Init: show all weeks from start
+  renderScorecard();
+
+  function showToast(msg) {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.classList.add('show');
+    setTimeout(function() { t.classList.remove('show'); }, 2800);
+  }
+</script>
+</body>
+</html>
