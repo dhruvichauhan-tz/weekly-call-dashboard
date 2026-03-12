@@ -897,10 +897,28 @@ var WEEK_KEY = getWeekKey();
 function dbUrl(path) { return DB_URL.replace(/\/+$/, '') + '/' + path + '.json'; }
 
 function dbSet(path, data) {
-  return fetch(dbUrl(path), { method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify(data) }).then(function(r){ return r.json(); });
+  var url = dbUrl(path);
+  return fetch(url, { method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify(data) })
+    .then(function(r){
+      if (!r.ok) throw new Error('HTTP ' + r.status + ' on PUT ' + url);
+      return r.json();
+    });
 }
-function dbDelete(path) { return fetch(dbUrl(path), { method:'DELETE' }); }
-function dbGet(path)    { return fetch(dbUrl(path)).then(function(r){ return r.json(); }); }
+function dbDelete(path) {
+  var url = dbUrl(path);
+  return fetch(url, { method:'DELETE' })
+    .then(function(r){
+      if (!r.ok) throw new Error('HTTP ' + r.status + ' on DELETE ' + url);
+    });
+}
+function dbGet(path) {
+  var url = dbUrl(path);
+  return fetch(url)
+    .then(function(r){
+      if (!r.ok) throw new Error('HTTP ' + r.status + ' on GET ' + url);
+      return r.json();
+    });
+}
 
 function setLive() {
   var dot = document.getElementById('fbDot'), lbl = document.getElementById('fbLabel');
@@ -924,7 +942,7 @@ function saveTeamUpdate(parsed) {
   parsed._id = docId;
   dbSet('updates/' + WEEK_KEY + '/' + docId, parsed)
     .then(function(){ setLive(); loadTeamUpdates(); })
-    .catch(function(e){ console.error(e); setDbError('Save failed'); showToast('Save failed'); });
+    .catch(function(e){ console.error('saveTeamUpdate error:', e); setDbError('Save failed'); showToast('Error: ' + e.message); });
 }
 
 function deleteTeamUpdate(docId) {
@@ -945,7 +963,7 @@ function loadTeamUpdates() {
       teamData = data ? Object.values(data) : [];
       renderTeamGrid(); renderIssues(); setLive();
     })
-    .catch(function(e){ console.error(e); setDbError('Load failed'); });
+    .catch(function(e){ console.error('loadTeamUpdates error:', e); setDbError('Load failed'); showToast('Error: ' + e.message); });
 }
 
 // ── Scorecard ────────────────────────────────────────────────────────────────
@@ -1001,9 +1019,20 @@ function loadScorecard() {
 // ── Init & polling ───────────────────────────────────────────────────────────
 function startPolling() {
   setConnecting();
-  loadTeamUpdates();
-  loadScorecard();
-  setInterval(loadTeamUpdates, 8000); // refresh team updates every 8 sec
+  // Quick connectivity test first
+  fetch(dbUrl('_ping'))
+    .then(function(r){
+      console.log('Firebase reachable, status:', r.status);
+      loadTeamUpdates();
+      loadScorecard();
+      setInterval(loadTeamUpdates, 8000);
+    })
+    .catch(function(e){
+      console.error('Firebase unreachable:', e);
+      setDbError('Cannot reach database');
+      showToast('Cannot reach Firebase: ' + e.message);
+      renderTeamGrid(); renderIssues(); renderScorecard();
+    });
 }
 
 if (DB_URL && !DB_URL.includes('PASTE_REALTIME')) {
