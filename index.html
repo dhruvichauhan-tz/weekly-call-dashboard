@@ -400,7 +400,6 @@
   let teamData = []; // synced from Firebase
   // Expose to Firebase module
   // Firebase function stubs — overridden when Firebase module loads
-  window.fbSetDoc    = function() { return Promise.resolve(); };
   window.fbDeleteDoc = function() { return Promise.resolve(); };
   window.fbClearWeek = function() { return Promise.resolve(); };
 
@@ -530,9 +529,7 @@
     const docId = role.replace(/\s+/g,'_') + '_' + name.replace(/\s+/g,'_');
     parsed._id = docId;
     const weekKey = getWeekKey();
-    window.fbSetDoc('weekly_updates', weekKey + '_' + docId, Object.assign({}, parsed, { weekKey: weekKey }))
-      .then(function() { showToast('Update saved ✓'); })
-      .catch(function() { showToast('Save failed — check Firebase config'); });
+    saveTeamUpdate(parsed);
     closeModal();
   }
 
@@ -593,18 +590,7 @@
   function removeCard(idx) {
     const m = teamData[idx];
     if (!m || !m._id) return;
-    const weekKey = getWeekKey();
-    window.fbDeleteDoc('weekly_updates', weekKey + '_' + m._id).then(function() {
-      showToast('Update removed');
-    });
-  }
-
-  function getWeekKey() {
-    if (window.getWeekKey && window.getWeekKey !== getWeekKey) return window.getWeekKey();
-    const now = new Date();
-    const s = new Date(now.getFullYear(), 0, 1);
-    const w = Math.ceil(((now - s) / 86400000 + s.getDay() + 1) / 7);
-    return now.getFullYear() + '_W' + String(w).padStart(2, '0');
+    deleteTeamUpdate(m._id);
   }
 
   function confirmClearAll() {
@@ -614,10 +600,7 @@
 
   function clearAll() {
     document.getElementById('confirmOverlay').classList.remove('open');
-    const weekKey = getWeekKey();
-    window.fbClearWeek(weekKey).then(function() {
-      showToast('Dashboard cleared for next week');
-    });
+    clearWeekUpdates();
   }
 
   // ── Scorecard ─────────────────────────────────────────────────────
@@ -741,11 +724,7 @@
     if (!scEdits[metric]) scEdits[metric] = {};
     scEdits[metric][weekLabel] = val;
     scUpdateStatus(metric);
-    // persist to Firebase
-    const key = 'sc_' + metric.replace(/[^a-zA-Z0-9]/g,'_') + '_' + weekLabel.replace(/[^a-zA-Z0-9]/g,'_');
-    window.fbSetDoc('scorecard', key, { metric: metric, week: weekLabel, value: val })
-      .then(function() { showToast('Saved ✓'); })
-      .catch(function(e) { console.error('Save failed', e); showToast('Save failed — check console'); });
+    saveScorecardCell(metric, weekLabel, val);
   }
 
   function scGetGoal(metric) {
@@ -761,10 +740,7 @@
       for (const row of sec.rows) {
         if (row.m === metric) {
           row.goal = val;
-          // persist to Firebase
-          const key = 'goal_' + metric.replace(/[^a-zA-Z0-9]/g,'_');
-          window.fbSetDoc('scorecard', key, { metric: metric, type: 'goal', value: val })
-            .catch(function(e) { console.error('Goal save failed', e); });
+          saveScorecardGoal(metric, val);
           return;
         }
       }
@@ -903,117 +879,139 @@
     setTimeout(function() { t.classList.remove('show'); }, 2800);
   }
 
-  // Expose to Firebase module (type=module runs after this script)
-  window._dash = {
-    get teamData() { return teamData; },
-    set teamData(v) { teamData.length=0; v.forEach(function(u){teamData.push(u);}); },
-    renderTeamGrid:  function(f) { renderTeamGrid(f); },
-    renderIssues:    function()  { renderIssues(); },
-    renderScorecard: function()  { renderScorecard(); },
-    scEdits:         scEdits,
-    SC_SECTIONS:     SC_SECTIONS,
-  };
 </script>
 
-<!-- Firebase -->
-<script type="module">
-  import { initializeApp }          from 'https://www.gstatic.com/firebasejs/12.10.0/firebase-app.js';
-  import { getFirestore, doc, setDoc, deleteDoc, collection,
-           query, where, onSnapshot, getDocs }
-    from 'https://www.gstatic.com/firebasejs/12.10.0/firebase-firestore.js';
+<script>
+// ── Firebase Realtime Database — simple REST, no SDK ──────────────────────────
+var DB_URL = 'https://weekly-stand-up-default-rtdb.firebaseio.com'; // e.g. https://weekly-stand-up-default-rtdb.firebaseio.com
 
-  const firebaseConfig = {
-    apiKey:            "AIzaSyCpsLFbkszSznLpbXlakOV4m5g5ITUVo8Q",
-    authDomain:        "weekly-stand-up.firebaseapp.com",
-    projectId:         "weekly-stand-up",
-    storageBucket:     "weekly-stand-up.firebasestorage.app",
-    messagingSenderId: "251125993868",
-    appId:             "1:251125993868:web:02270b808959b4545706a9"
-  };
+function getWeekKey() {
+  var now = new Date();
+  var s = new Date(now.getFullYear(), 0, 1);
+  var w = Math.ceil(((now - s) / 86400000 + s.getDay() + 1) / 7);
+  return now.getFullYear() + '_W' + String(w).padStart(2, '0');
+}
 
-  const dot   = document.getElementById('fbDot');
-  const label = document.getElementById('fbLabel');
+var WEEK_KEY = getWeekKey();
 
-  const app = initializeApp(firebaseConfig);
-  const db  = getFirestore(app);
+function dbUrl(path) { return DB_URL.replace(/\/+$/, '') + '/' + path + '.json'; }
 
-  // ── Helpers ──────────────────────────────────────────────────────
-  function getWeekKey() {
-    const now = new Date();
-    const s   = new Date(now.getFullYear(), 0, 1);
-    const w   = Math.ceil(((now - s) / 86400000 + s.getDay() + 1) / 7);
-    return now.getFullYear() + '_W' + String(w).padStart(2, '0');
-  }
+function dbSet(path, data) {
+  return fetch(dbUrl(path), { method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify(data) }).then(function(r){ return r.json(); });
+}
+function dbDelete(path) { return fetch(dbUrl(path), { method:'DELETE' }); }
+function dbGet(path)    { return fetch(dbUrl(path)).then(function(r){ return r.json(); }); }
 
-  // Expose to main script
-  window.getWeekKey = getWeekKey;
+function setLive() {
+  var dot = document.getElementById('fbDot'), lbl = document.getElementById('fbLabel');
+  if (dot) { dot.style.background='#3ecf8e'; dot.style.boxShadow='0 0 6px #3ecf8e88'; }
+  if (lbl) { lbl.textContent='Live'; lbl.style.color='#3ecf8e'; }
+}
+function setConnecting() {
+  var dot = document.getElementById('fbDot'), lbl = document.getElementById('fbLabel');
+  if (dot) dot.style.background = '#f0a030';
+  if (lbl) { lbl.textContent='Connecting…'; lbl.style.color='#f0a030'; }
+}
+function setDbError(msg) {
+  var dot = document.getElementById('fbDot'), lbl = document.getElementById('fbLabel');
+  if (dot) dot.style.background='#e05050';
+  if (lbl) { lbl.textContent = msg||'Error'; lbl.style.color='#e05050'; }
+}
 
-  window.fbSetDoc = function(collName, docId, data) {
-    return setDoc(doc(db, collName, docId), data, { merge: true });
-  };
+// ── Team updates ─────────────────────────────────────────────────────────────
+function saveTeamUpdate(parsed) {
+  var docId = parsed.role.replace(/\s+/g,'_') + '_' + parsed.name.replace(/\s+/g,'_');
+  parsed._id = docId;
+  dbSet('updates/' + WEEK_KEY + '/' + docId, parsed)
+    .then(function(){ setLive(); loadTeamUpdates(); })
+    .catch(function(e){ console.error(e); setDbError('Save failed'); showToast('Save failed'); });
+}
 
-  window.fbDeleteDoc = function(collName, docId) {
-    return deleteDoc(doc(db, collName, docId));
-  };
+function deleteTeamUpdate(docId) {
+  dbDelete('updates/' + WEEK_KEY + '/' + docId)
+    .then(function(){ loadTeamUpdates(); showToast('Update removed'); })
+    .catch(function(e){ console.error(e); });
+}
 
-  window.fbClearWeek = async function(weekKey) {
-    const snap = await getDocs(query(collection(db, 'weekly_updates'), where('weekKey', '==', weekKey)));
-    await Promise.all(snap.docs.map(d => deleteDoc(d.ref)));
-  };
+function clearWeekUpdates() {
+  dbDelete('updates/' + WEEK_KEY)
+    .then(function(){ loadTeamUpdates(); showToast('Dashboard cleared'); })
+    .catch(function(e){ console.error(e); });
+}
 
-  // ── Live listener: team updates ───────────────────────────────────
-  const weekKey = getWeekKey();
-  onSnapshot(
-    query(collection(db, 'weekly_updates'), where('weekKey', '==', weekKey)),
-    function(snapshot) {
-      const updates = [];
-      snapshot.forEach(function(d) {
-        const data = d.data();
-        data._id = d.id.replace(weekKey + '_', '');
-        updates.push(data);
-      });
-      window._dash.teamData = updates;
-      window._dash.renderTeamGrid();
-      window._dash.renderIssues();
-      dot.style.background = '#3ecf8e';
-      dot.style.boxShadow  = '0 0 6px #3ecf8e88';
-      label.textContent = 'Live';
-      label.style.color = '#3ecf8e';
-    },
-    function(err) {
-      console.error(err);
-      dot.style.background = '#e05050';
-      label.textContent = 'Connection error';
-      label.style.color = '#e05050';
-    }
-  );
+function loadTeamUpdates() {
+  dbGet('updates/' + WEEK_KEY)
+    .then(function(data){
+      teamData = data ? Object.values(data) : [];
+      renderTeamGrid(); renderIssues(); setLive();
+    })
+    .catch(function(e){ console.error(e); setDbError('Load failed'); });
+}
 
-  // ── Live listener: scorecard (persists edits + goals across refreshes) ──
-  onSnapshot(
-    collection(db, 'scorecard'),
-    function(snapshot) {
-      // Reset edits and goals to baked-in defaults, then overlay Firebase data
-      const edits = window._dash.scEdits;
-      // Clear only Firebase-saved edits (keep historical baked-in data intact)
-      Object.keys(edits).forEach(function(k) { delete edits[k]; });
+// ── Scorecard ────────────────────────────────────────────────────────────────
+function saveScorecardCell(metric, weekLabel, value) {
+  var mKey = metric.replace(/[^a-zA-Z0-9]/g,'_');
+  var wKey = weekLabel.replace(/[^a-zA-Z0-9]/g,'_');
+  dbSet('scorecard/cells/' + mKey + '/' + wKey, value)
+    .then(function(){ showToast('Saved ✓'); setLive(); })
+    .catch(function(e){ console.error(e); showToast('Save failed'); });
+}
 
-      snapshot.forEach(function(d) {
-        const data = d.data();
-        if (data.type === 'goal') {
-          for (const sec of window._dash.SC_SECTIONS) {
-            for (const row of sec.rows) {
-              if (row.m === data.metric) { row.goal = data.value; }
-            }
-          }
-        } else {
-          if (!edits[data.metric]) edits[data.metric] = {};
-          edits[data.metric][data.week] = data.value;
-        }
-      });
-      window._dash.renderScorecard();
-    },
-    function(err) { console.warn('Scorecard sync error', err); }
-  );
+function saveScorecardGoal(metric, value) {
+  var mKey = metric.replace(/[^a-zA-Z0-9]/g,'_');
+  dbSet('scorecard/goals/' + mKey, value)
+    .catch(function(e){ console.error(e); });
+}
+
+function loadScorecard() {
+  dbGet('scorecard')
+    .then(function(data){
+      if (!data) { renderScorecard(); return; }
+      // Load goals
+      if (data.goals) {
+        SC_SECTIONS.forEach(function(sec){
+          sec.rows.forEach(function(row){
+            var k = row.m.replace(/[^a-zA-Z0-9]/g,'_');
+            if (data.goals[k] !== undefined && data.goals[k] !== null) row.goal = data.goals[k];
+          });
+        });
+      }
+      // Load cell edits
+      if (data.cells) {
+        Object.keys(data.cells).forEach(function(mKey){
+          SC_SECTIONS.forEach(function(sec){
+            sec.rows.forEach(function(row){
+              if (row.m.replace(/[^a-zA-Z0-9]/g,'_') === mKey) {
+                if (!scEdits[row.m]) scEdits[row.m] = {};
+                Object.keys(data.cells[mKey]).forEach(function(wKey){
+                  // wKey stored as "4_Jan", convert back to "4-Jan"
+                  var weekLabel = wKey.replace(/^(\d+)_([A-Z][a-z]+)$/, '$1-$2');
+                  scEdits[row.m][weekLabel] = data.cells[mKey][wKey];
+                });
+              }
+            });
+          });
+        });
+      }
+      renderScorecard(); setLive();
+    })
+    .catch(function(e){ console.error(e); renderScorecard(); });
+}
+
+// ── Init & polling ───────────────────────────────────────────────────────────
+function startPolling() {
+  setConnecting();
+  loadTeamUpdates();
+  loadScorecard();
+  setInterval(loadTeamUpdates, 8000); // refresh team updates every 8 sec
+}
+
+if (DB_URL && !DB_URL.includes('PASTE_REALTIME')) {
+  startPolling();
+} else {
+  setDbError('DB not configured');
+  renderTeamGrid(); renderIssues(); renderScorecard();
+}
 </script>
 </body>
 </html>
