@@ -183,6 +183,10 @@
     <div class="logo">Team Standup</div>
     <div class="week-pill" id="weekPill">Week —</div>
     <div class="week-pill" id="datePill" style="border-color:transparent;background:transparent;color:var(--muted)"></div>
+    <div id="fbStatus" style="display:flex;align-items:center;gap:6px;font-size:0.72rem;color:var(--muted)">
+      <span id="fbDot" style="width:7px;height:7px;border-radius:50%;background:var(--muted);display:inline-block"></span>
+      <span id="fbLabel">Connecting…</span>
+    </div>
   </div>
   <div class="topbar-right">
     <div class="timer-display" id="timerDisplay">30:00</div>
@@ -235,7 +239,7 @@
     <div class="guideline-col">
       <h4>Before this call</h4>
       <ul>
-        <li>Submit status form by Thursday EOD</li>
+        <li>Add your update on the dashboard by Wednesday EOD</li>
         <li>Review your own update — be ready</li>
         <li>No slide prep needed</li>
       </ul>
@@ -387,7 +391,13 @@
   const COLORS = ['#e0622a','#4a80f0','#3ecf8e','#f0a030','#a060e0'];
   function initials(n) { return (n||'?').split(' ').map(w=>w[0]||'').join('').toUpperCase().slice(0,2)||'?'; }
 
-  let teamData = [];
+  let teamData = []; // synced from Firebase
+  // Expose to Firebase module
+  // Firebase function stubs — overridden when Firebase module loads
+  window.fbSetDoc    = function() { return Promise.resolve(); };
+  window.fbDeleteDoc = function() { return Promise.resolve(); };
+  window.fbClearWeek = function() { return Promise.resolve(); };
+  window.fbLoadScorecard = function() { renderScorecard(); };
 
   function parseUpdate(text, nameOverride, roleOverride) {
     let name = nameOverride || 'Team Member';
@@ -502,25 +512,21 @@
     if (!role) { document.getElementById('modalRole').focus(); return; }
 
     const parsed = {
-      name,
-      role,
+      name: name,
+      role: role,
       done:   parseLines(document.getElementById('fieldDone').value),
       wins:   parseLines(document.getElementById('fieldWins').value),
       issues: parseLines(document.getElementById('fieldIssues').value),
       focus:  parseLines(document.getElementById('fieldFocus').value),
     };
 
-    const overlay = document.getElementById('modalOverlay');
-    const editIdx = overlay.dataset.editIdx !== undefined ? parseInt(overlay.dataset.editIdx) : -1;
-    if (editIdx >= 0) {
-      teamData[editIdx] = parsed;
-    } else {
-      const existing = teamData.findIndex(m => m.name.toLowerCase() === name.toLowerCase());
-      if (existing >= 0) teamData[existing] = parsed; else teamData.push(parsed);
-    }
-
-    renderTeamGrid();
-    renderIssues();
+    // doc ID = weekKey_role_name so same person overwrites cleanly
+    const docId = role.replace(/\s+/g,'_') + '_' + name.replace(/\s+/g,'_');
+    parsed._id = docId;
+    const weekKey = getWeekKey();
+    fbSetDoc('weekly_updates', weekKey + '_' + docId, Object.assign({}, parsed, { weekKey: weekKey }))
+      .then(function() { showToast('Update saved ✓'); })
+      .catch(function() { showToast('Save failed — check Firebase config'); });
     closeModal();
   }
 
@@ -579,10 +585,20 @@
   }
 
   function removeCard(idx) {
-    teamData.splice(idx, 1);
-    renderTeamGrid();
-    renderIssues();
-    showToast('Update removed');
+    const m = teamData[idx];
+    if (!m || !m._id) return;
+    const weekKey = getWeekKey();
+    fbDeleteDoc('weekly_updates', weekKey + '_' + m._id).then(function() {
+      showToast('Update removed');
+    });
+  }
+
+  function getWeekKey() {
+    if (window.getWeekKey && window.getWeekKey !== getWeekKey) return window.getWeekKey();
+    const now = new Date();
+    const s = new Date(now.getFullYear(), 0, 1);
+    const w = Math.ceil(((now - s) / 86400000 + s.getDay() + 1) / 7);
+    return now.getFullYear() + '_W' + String(w).padStart(2, '0');
   }
 
   function confirmClearAll() {
@@ -591,11 +607,11 @@
   }
 
   function clearAll() {
-    teamData = [];
-    renderTeamGrid();
-    renderIssues();
     document.getElementById('confirmOverlay').classList.remove('open');
-    showToast('Dashboard cleared for next week');
+    const weekKey = getWeekKey();
+    fbClearWeek(weekKey).then(function() {
+      showToast('Dashboard cleared for next week');
+    });
   }
 
   // ── Scorecard ─────────────────────────────────────────────────────
@@ -718,8 +734,10 @@
   function scSetVal(metric, weekLabel, val) {
     if (!scEdits[metric]) scEdits[metric] = {};
     scEdits[metric][weekLabel] = val;
-    // update status pill for this row
     scUpdateStatus(metric);
+    // persist to Firebase
+    const key = 'sc_' + metric.replace(/[^a-zA-Z0-9]/g,'_') + '_' + weekLabel.replace(/[^a-zA-Z0-9]/g,'_');
+    fbSetDoc('scorecard', key, { metric: metric, week: weekLabel, value: val });
   }
 
   function scGetGoal(metric) {
@@ -733,7 +751,13 @@
   function scSetGoal(metric, val) {
     for (const sec of SC_SECTIONS) {
       for (const row of sec.rows) {
-        if (row.m === metric) { row.goal = val; return; }
+        if (row.m === metric) {
+          row.goal = val;
+          // persist to Firebase
+          const key = 'goal_' + metric.replace(/[^a-zA-Z0-9]/g,'_');
+          fbSetDoc('scorecard', key, { metric: metric, type: 'goal', value: val });
+          return;
+        }
       }
     }
   }
@@ -828,8 +852,8 @@
     document.getElementById('scTable').innerHTML = html;
   }
 
-  // Init: show all weeks from start
-  renderScorecard();
+  // Init: load scorecard edits from Firebase then render
+  fbLoadScorecard();
 
   function showToast(msg) {
     const t = document.getElementById('toast');
@@ -837,6 +861,113 @@
     t.classList.add('show');
     setTimeout(function() { t.classList.remove('show'); }, 2800);
   }
+
+  // Expose to Firebase module (type=module runs after this script)
+  window._dash = {
+    get teamData() { return teamData; },
+    set teamData(v) { teamData.length=0; v.forEach(function(u){teamData.push(u);}); },
+    renderTeamGrid:  function(f) { renderTeamGrid(f); },
+    renderIssues:    function()  { renderIssues(); },
+    renderScorecard: function()  { renderScorecard(); },
+    scEdits:         scEdits,
+    SC_SECTIONS:     SC_SECTIONS,
+  };
+</script>
+
+<!-- Firebase -->
+<script type="module">
+  import { initializeApp }          from 'https://www.gstatic.com/firebasejs/12.10.0/firebase-app.js';
+  import { getFirestore, doc, setDoc, deleteDoc, collection,
+           query, where, onSnapshot, getDocs }
+    from 'https://www.gstatic.com/firebasejs/12.10.0/firebase-firestore.js';
+
+  const firebaseConfig = {
+    apiKey:            "AIzaSyCpsLFbkszSznLpbXlakOV4m5g5ITUVo8Q",
+    authDomain:        "weekly-stand-up.firebaseapp.com",
+    projectId:         "weekly-stand-up",
+    storageBucket:     "weekly-stand-up.firebasestorage.app",
+    messagingSenderId: "251125993868",
+    appId:             "1:251125993868:web:02270b808959b4545706a9"
+  };
+
+  const dot   = document.getElementById('fbDot');
+  const label = document.getElementById('fbLabel');
+
+  const app = initializeApp(firebaseConfig);
+  const db  = getFirestore(app);
+
+  // ── Helpers ──────────────────────────────────────────────────────
+  function getWeekKey() {
+    const now = new Date();
+    const s   = new Date(now.getFullYear(), 0, 1);
+    const w   = Math.ceil(((now - s) / 86400000 + s.getDay() + 1) / 7);
+    return now.getFullYear() + '_W' + String(w).padStart(2, '0');
+  }
+
+  // Expose to main script
+  window.getWeekKey = getWeekKey;
+
+  window.fbSetDoc = function(collName, docId, data) {
+    return setDoc(doc(db, collName, docId), data, { merge: true });
+  };
+
+  window.fbDeleteDoc = function(collName, docId) {
+    return deleteDoc(doc(db, collName, docId));
+  };
+
+  window.fbClearWeek = async function(weekKey) {
+    const snap = await getDocs(query(collection(db, 'weekly_updates'), where('weekKey', '==', weekKey)));
+    await Promise.all(snap.docs.map(d => deleteDoc(d.ref)));
+  };
+
+  // ── Live listener: team updates ───────────────────────────────────
+  const weekKey = getWeekKey();
+  onSnapshot(
+    query(collection(db, 'weekly_updates'), where('weekKey', '==', weekKey)),
+    function(snapshot) {
+      const updates = [];
+      snapshot.forEach(function(d) {
+        const data = d.data();
+        data._id = d.id.replace(weekKey + '_', '');
+        updates.push(data);
+      });
+      window._dash.teamData = updates;
+      window._dash.renderTeamGrid();
+      window._dash.renderIssues();
+      dot.style.background = '#3ecf8e';
+      dot.style.boxShadow  = '0 0 6px #3ecf8e88';
+      label.textContent = 'Live';
+      label.style.color = '#3ecf8e';
+    },
+    function(err) {
+      console.error(err);
+      dot.style.background = '#e05050';
+      label.textContent = 'Connection error';
+      label.style.color = '#e05050';
+    }
+  );
+
+  // ── Load scorecard edits + goals from Firebase ────────────────────
+  window.fbLoadScorecard = async function() {
+    try {
+      const snap = await getDocs(collection(db, 'scorecard'));
+      snap.forEach(function(d) {
+        const data = d.data();
+        if (data.type === 'goal') {
+          for (const sec of window._dash.SC_SECTIONS) {
+            for (const row of sec.rows) {
+              if (row.m === data.metric) { row.goal = data.value; }
+            }
+          }
+        } else {
+          const edits = window._dash.scEdits;
+          if (!edits[data.metric]) edits[data.metric] = {};
+          edits[data.metric][data.week] = data.value;
+        }
+      });
+    } catch(e) { console.warn('Scorecard load error', e); }
+    window._dash.renderScorecard();
+  };
 </script>
 </body>
 </html>
