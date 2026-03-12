@@ -941,8 +941,9 @@ function saveTeamUpdate(parsed) {
   var docId = parsed.role.replace(/\s+/g,'_') + '_' + parsed.name.replace(/\s+/g,'_');
   parsed._id = docId;
   // Show immediately in UI
+  var safe = sanitizeMember(parsed);
   var existing = teamData.findIndex(function(m){ return m._id === docId; });
-  if (existing >= 0) teamData[existing] = parsed; else teamData.push(parsed);
+  if (existing >= 0) teamData[existing] = safe; else teamData.push(safe);
   renderTeamGrid(); renderIssues();
   // Then persist to Firebase
   dbSet('updates/' + WEEK_KEY + '/' + docId, parsed)
@@ -962,10 +963,22 @@ function clearWeekUpdates() {
     .catch(function(e){ console.error(e); });
 }
 
+function sanitizeMember(m) {
+  return {
+    _id:    m._id    || '',
+    name:   m.name   || '',
+    role:   m.role   || '',
+    done:   Array.isArray(m.done)   ? m.done   : [],
+    wins:   Array.isArray(m.wins)   ? m.wins   : [],
+    issues: Array.isArray(m.issues) ? m.issues : [],
+    focus:  Array.isArray(m.focus)  ? m.focus  : [],
+  };
+}
+
 function loadTeamUpdates() {
   dbGet('updates/' + WEEK_KEY)
     .then(function(data){
-      teamData = data ? Object.values(data) : [];
+      teamData = data ? Object.values(data).map(sanitizeMember) : [];
       renderTeamGrid(); renderIssues(); setLive();
     })
     .catch(function(e){ console.error('loadTeamUpdates error:', e); setDbError('Load failed'); });
