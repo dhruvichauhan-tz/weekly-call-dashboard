@@ -524,7 +524,7 @@
     const docId = role.replace(/\s+/g,'_') + '_' + name.replace(/\s+/g,'_');
     parsed._id = docId;
     const weekKey = getWeekKey();
-    fbSetDoc('weekly_updates', weekKey + '_' + docId, Object.assign({}, parsed, { weekKey: weekKey }))
+    window.fbSetDoc('weekly_updates', weekKey + '_' + docId, Object.assign({}, parsed, { weekKey: weekKey }))
       .then(function() { showToast('Update saved ✓'); })
       .catch(function() { showToast('Save failed — check Firebase config'); });
     closeModal();
@@ -588,7 +588,7 @@
     const m = teamData[idx];
     if (!m || !m._id) return;
     const weekKey = getWeekKey();
-    fbDeleteDoc('weekly_updates', weekKey + '_' + m._id).then(function() {
+    window.fbDeleteDoc('weekly_updates', weekKey + '_' + m._id).then(function() {
       showToast('Update removed');
     });
   }
@@ -609,7 +609,7 @@
   function clearAll() {
     document.getElementById('confirmOverlay').classList.remove('open');
     const weekKey = getWeekKey();
-    fbClearWeek(weekKey).then(function() {
+    window.fbClearWeek(weekKey).then(function() {
       showToast('Dashboard cleared for next week');
     });
   }
@@ -737,7 +737,9 @@
     scUpdateStatus(metric);
     // persist to Firebase
     const key = 'sc_' + metric.replace(/[^a-zA-Z0-9]/g,'_') + '_' + weekLabel.replace(/[^a-zA-Z0-9]/g,'_');
-    fbSetDoc('scorecard', key, { metric: metric, week: weekLabel, value: val });
+    window.fbSetDoc('scorecard', key, { metric: metric, week: weekLabel, value: val })
+      .then(function() { showToast('Saved ✓'); })
+      .catch(function(e) { console.error('Save failed', e); showToast('Save failed — check console'); });
   }
 
   function scGetGoal(metric) {
@@ -755,7 +757,8 @@
           row.goal = val;
           // persist to Firebase
           const key = 'goal_' + metric.replace(/[^a-zA-Z0-9]/g,'_');
-          fbSetDoc('scorecard', key, { metric: metric, type: 'goal', value: val });
+          window.fbSetDoc('scorecard', key, { metric: metric, type: 'goal', value: val })
+            .catch(function(e) { console.error('Goal save failed', e); });
           return;
         }
       }
