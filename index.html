@@ -397,7 +397,7 @@
   window.fbSetDoc    = function() { return Promise.resolve(); };
   window.fbDeleteDoc = function() { return Promise.resolve(); };
   window.fbClearWeek = function() { return Promise.resolve(); };
-  window.fbLoadScorecard = function() { renderScorecard(); };
+
 
   function parseUpdate(text, nameOverride, roleOverride) {
     let name = nameOverride || 'Team Member';
@@ -852,8 +852,9 @@
     document.getElementById('scTable').innerHTML = html;
   }
 
-  // Init: load scorecard edits from Firebase then render
-  fbLoadScorecard();
+  // Scorecard renders immediately with baked-in historical data.
+  // Firebase module will reload it with any saved edits once connected.
+  renderScorecard();
 
   function showToast(msg) {
     const t = document.getElementById('toast');
@@ -947,11 +948,16 @@
     }
   );
 
-  // ── Load scorecard edits + goals from Firebase ────────────────────
-  window.fbLoadScorecard = async function() {
-    try {
-      const snap = await getDocs(collection(db, 'scorecard'));
-      snap.forEach(function(d) {
+  // ── Live listener: scorecard (persists edits + goals across refreshes) ──
+  onSnapshot(
+    collection(db, 'scorecard'),
+    function(snapshot) {
+      // Reset edits and goals to baked-in defaults, then overlay Firebase data
+      const edits = window._dash.scEdits;
+      // Clear only Firebase-saved edits (keep historical baked-in data intact)
+      Object.keys(edits).forEach(function(k) { delete edits[k]; });
+
+      snapshot.forEach(function(d) {
         const data = d.data();
         if (data.type === 'goal') {
           for (const sec of window._dash.SC_SECTIONS) {
@@ -960,14 +966,14 @@
             }
           }
         } else {
-          const edits = window._dash.scEdits;
           if (!edits[data.metric]) edits[data.metric] = {};
           edits[data.metric][data.week] = data.value;
         }
       });
-    } catch(e) { console.warn('Scorecard load error', e); }
-    window._dash.renderScorecard();
-  };
+      window._dash.renderScorecard();
+    },
+    function(err) { console.warn('Scorecard sync error', err); }
+  );
 </script>
 </body>
 </html>
