@@ -940,9 +940,14 @@ function setDbError(msg) {
 function saveTeamUpdate(parsed) {
   var docId = parsed.role.replace(/\s+/g,'_') + '_' + parsed.name.replace(/\s+/g,'_');
   parsed._id = docId;
+  // Show immediately in UI
+  var existing = teamData.findIndex(function(m){ return m._id === docId; });
+  if (existing >= 0) teamData[existing] = parsed; else teamData.push(parsed);
+  renderTeamGrid(); renderIssues();
+  // Then persist to Firebase
   dbSet('updates/' + WEEK_KEY + '/' + docId, parsed)
-    .then(function(){ setLive(); loadTeamUpdates(); })
-    .catch(function(e){ console.error('saveTeamUpdate error:', e); setDbError('Save failed'); showToast('Error: ' + e.message); });
+    .then(function(){ setLive(); showToast('Update saved ✓'); })
+    .catch(function(e){ console.error('saveTeamUpdate error:', e); setDbError('Save failed'); showToast('Save failed — check connection'); });
 }
 
 function deleteTeamUpdate(docId) {
@@ -963,7 +968,7 @@ function loadTeamUpdates() {
       teamData = data ? Object.values(data) : [];
       renderTeamGrid(); renderIssues(); setLive();
     })
-    .catch(function(e){ console.error('loadTeamUpdates error:', e); setDbError('Load failed'); showToast('Error: ' + e.message); });
+    .catch(function(e){ console.error('loadTeamUpdates error:', e); setDbError('Load failed'); });
 }
 
 // ── Scorecard ────────────────────────────────────────────────────────────────
@@ -1019,20 +1024,9 @@ function loadScorecard() {
 // ── Init & polling ───────────────────────────────────────────────────────────
 function startPolling() {
   setConnecting();
-  // Quick connectivity test first
-  fetch(dbUrl('_ping'))
-    .then(function(r){
-      console.log('Firebase reachable, status:', r.status);
-      loadTeamUpdates();
-      loadScorecard();
-      setInterval(loadTeamUpdates, 8000);
-    })
-    .catch(function(e){
-      console.error('Firebase unreachable:', e);
-      setDbError('Cannot reach database');
-      showToast('Cannot reach Firebase: ' + e.message);
-      renderTeamGrid(); renderIssues(); renderScorecard();
-    });
+  loadTeamUpdates();
+  loadScorecard();
+  setInterval(loadTeamUpdates, 8000);
 }
 
 if (DB_URL && !DB_URL.includes('PASTE_REALTIME')) {
